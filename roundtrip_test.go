@@ -1,4 +1,4 @@
-package example
+package main
 
 import (
 	"context"
@@ -14,23 +14,26 @@ func TestWorkerReceivesPublishedMessage(t *testing.T) {
 	defer cancel()
 	queue := "roundtrip-" + rand.Text()
 
-	c, err := Connect(ctx)
+	c, err := connect(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
 
 	received := make(chan string, 1)
-	sub, err := Consume(ctx, c, queue, func(message string) error {
-		received <- message
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sub.Cancel(ctx)
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	defer stopWorker()
+	go func() {
+		err := runWorker(workerCtx, c, queue, func(message string) error {
+			received <- message
+			return nil
+		})
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
-	if err := Publish(ctx, c, queue, "Hello CloudAMQP!"); err != nil {
+	if err := runPublisher(ctx, c, queue, "Hello CloudAMQP!"); err != nil {
 		t.Fatal(err)
 	}
 
